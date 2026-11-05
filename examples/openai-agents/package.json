@@ -1,0 +1,11 @@
+{
+  "name": "shakedown-example-openai-agents",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.96",
+    "@openai/agents": "^0.21.0",
+    "@openai/agents-extensions": "^0.21.0",
+    "zod": "^4.6.7"
+  }
+}

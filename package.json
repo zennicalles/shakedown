@@ -1,0 +1,52 @@
+{
+  "name": "agent-shakedown",
+  "version": "0.1.0",
+  "description": "Crash-test your AI agent's tool calls: stateful fake backends + fault injection + invariants that fail CI when an agent double-refunds, double-sends or deletes.",
+  "keywords": [
+    "ai",
+    "agents",
+    "testing",
+    "fault-injection",
+    "idempotency",
+    "mcp",
+    "llm",
+    "chaos"
+  ],
+  "license": "MIT",
+  "author": "zennicalles",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zennicalles/shakedown.git"
+  },
+  "homepage": "https://github.com/zennicalles/shakedown#readme",
+  "bugs": {
+    "url": "https://github.com/zennicalles/shakedown/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --maxWorkers=1 test/core.test.ts",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
