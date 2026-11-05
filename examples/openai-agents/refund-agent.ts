@@ -7,7 +7,7 @@
  *
  *   fixed: false -> plain tool bodies (what most people ship)
  *   fixed: true  -> idempotent() OUTSIDE shake(), keyed on LOGICAL identity
- *                   (refund:<ticket>, email:<ticket>:<subject>), and the same key
+ *                   (refund:<ticket>, refund-email:<ticket>), and the same key
  *                   sent DOWNSTREAM as the Stripe / mailer Idempotency-Key. The
  *                   ledger replays finished operations; the downstream key covers
  *                   the window where the side effect happened but the ledger was
@@ -77,7 +77,7 @@ export function createRefundAgent(opts: RefundAgentOptions): Agent {
   if (fixed) {
     // idempotent() goes OUTSIDE shake(): the fault hits the raw call; ledger + key wrap it.
     refundFn = idempotent(refundFn, { key: (a) => `refund:${a.ticket}`, store: ledger })
-    emailFn = idempotent(emailFn, { key: (a) => `email:${a.ticket}:${a.subject}`, store: ledger })
+    emailFn = idempotent(emailFn, { key: (a) => `refund-email:${a.ticket}`, store: ledger })
   }
 
   // The SDK calls execute(input, runContext, details); pass only the input on.

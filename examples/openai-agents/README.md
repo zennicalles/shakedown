@@ -16,7 +16,7 @@ npx tsc --noEmit -p examples/openai-agents
 
 | File | What |
 |---|---|
-| `refund-agent.ts` | `createRefundAgent({ fixed })`. The tools are `lookup_charge` (read), `refund` and `send_email` (write). `shake()` wraps the raw `stripe.refunds.create` / `mailer.send` call (the side-effect boundary). With `fixed: true`, `idempotent()` wraps that from the OUTSIDE, keyed on `refund:<ticket>` and `email:<ticket>:<subject>`, and the shaken body passes `currentIdempotencyKey()` downstream as `{ idempotencyKey }`. |
+| `refund-agent.ts` | `createRefundAgent({ fixed })`. The tools are `lookup_charge` (read), `refund` and `send_email` (write). `shake()` wraps the raw `stripe.refunds.create` / `mailer.send` call (the side-effect boundary). With `fixed: true`, `idempotent()` wraps that from the OUTSIDE, keyed on `refund:<ticket>` and `refund-email:<ticket> (never the model-written subject: a model that rewords the email on retry would get a new key)`, and the shaken body passes `currentIdempotencyKey()` downstream as `{ idempotencyKey }`. |
 | `mock-model.ts` | The reactive `Model` implementation. |
 | `harness.ts` | The two scenarios, a durable Session, a RunState store, and `jobSignal()` (Shakedown's `crashSignal()` as the run's AbortSignal). |
 

@@ -7,7 +7,7 @@
  *  - shake() wraps the RAW side-effect call (stripe.refunds.create, mailer.send).
  *    That is the boundary where real timeouts and crashes happen.
  *  - fixed=true puts idempotent() OUTSIDE shake(), keyed on the logical operation
- *    (refund:<ticket>, email:<ticket>:<subject>), and the shaken body sends that
+ *    (refund:<ticket>, refund-email:<ticket>), and the shaken body sends that
  *    same key DOWNSTREAM as { idempotencyKey } via currentIdempotencyKey(). The
  *    ledger is a default (volatile) MemoryLedger: a simulated crash or a job
  *    redelivery wipes it, so the downstream key is what actually prevents the
@@ -210,7 +210,7 @@ function makeEffects(world: { fixed: boolean; stripe: FakeStripe; mailer: FakeMa
   if (!world.fixed) return { refund: rawRefund, email: rawEmail }
   return {
     refund: idempotent(rawRefund, { key: (a) => `refund:${a.ticket}`, store: ledger }),
-    email: idempotent(rawEmail, { key: (a) => `email:${a.ticket}:${a.subject}`, store: ledger }),
+    email: idempotent(rawEmail, { key: (a) => `refund-email:${a.ticket}`, store: ledger }),
   }
 }
 

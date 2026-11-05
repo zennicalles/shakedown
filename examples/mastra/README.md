@@ -32,7 +32,7 @@ createTool({ id: 'refund', inputSchema, execute: async (input) => refund(input) 
 ```
 
 - `shake()` wraps the raw Stripe or mailer call, because that is where real timeouts and crashes happen. Mastra's tool `execute` calls the wrapped function.
-- `idempotent()` goes **outside** `shake()`. Its keys are logical: `refund:<ticket>` and `email:<ticket>:<subject>`. Inside the shaken body, `currentIdempotencyKey()` reads the key, and the body sends it as Stripe's / the mailer's `idempotencyKey`. That downstream key is the actual fix. The ledger is written only after the side effect returns, so a fault at the boundary leaves it empty.
+- `idempotent()` goes **outside** `shake()`. Its keys are logical: `refund:<ticket>` and `refund-email:<ticket> (never the model-written subject: a model that rewords the email on retry would get a new key)`. Inside the shaken body, `currentIdempotencyKey()` reads the key, and the body sends it as Stripe's / the mailer's `idempotencyKey`. That downstream key is the actual fix. The ledger is written only after the side effect returns, so a fault at the boundary leaves it empty.
 - Every ledger here is the default, **volatile** `MemoryLedger`. A crash or redelivery wipes it, just as a process restart would. No ledger is marked durable.
 - The core v1 wiring was `shake(idempotent(body))`, with no downstream key. It reported false passes and has been removed. The `ledger-only` variant shows what the ledger does without the downstream key: it fails every after-commit fault.
 

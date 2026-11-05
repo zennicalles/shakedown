@@ -7,7 +7,7 @@
  *
  *   fixed: false  -> plain tool bodies (what most people ship)
  *   fixed: true   -> idempotent() OUTSIDE shake(), keyed on LOGICAL identity
- *                    (refund:<ticket>, email:<ticket>:<subject>), and the same key
+ *                    (refund:<ticket>, refund-email:<ticket>), and the same key
  *                    sent DOWNSTREAM as Stripe's / the mailer's Idempotency-Key.
  *
  * The ledger alone is not the fix: it is written only after the side effect
@@ -93,7 +93,7 @@ export function createRefundTools(opts: Omit<RefundAgentOptions, 'model'>) {
   let email = shake('send_email', async (a: EmailArgs) => mailer.send({ to: a.to, subject: a.subject, body: a.body }, downstream()))
   if (fixed) {
     refund = idempotent(refund, { key: (a) => `refund:${a.ticket}`, store: opts.ledger })
-    email = idempotent(email, { key: (a) => `email:${a.ticket}:${a.subject}`, store: opts.ledger })
+    email = idempotent(email, { key: (a) => `refund-email:${a.ticket}`, store: opts.ledger })
   }
 
   const guard = async <T>(call: () => Promise<T>, abortSignal: AbortSignal | undefined): Promise<T> => {

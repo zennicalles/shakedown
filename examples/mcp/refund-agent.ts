@@ -187,7 +187,7 @@ export function createToolBodies(world: World, opts: Pick<RefundAgentOptions, 'm
   if (opts.mode !== 'naive') {
     const durable = opts.ledger === 'durable'
     refund = idempotent(rawRefund, { key: (a) => `refund:${a.ticket}`, ...(durable ? { store: world.ledgers.refund } : {}) })
-    send_email = idempotent(rawEmail, { key: (a) => `email:${a.ticket}:${a.subject}`, ...(durable ? { store: world.ledgers.email } : {}) })
+    send_email = idempotent(rawEmail, { key: (a) => `refund-email:${a.ticket}`, ...(durable ? { store: world.ledgers.email } : {}) })
   }
 
   return {
