@@ -124,7 +124,7 @@ See [`examples/`](examples): Vercel AI SDK, OpenAI Agents SDK, LangGraph.js, Mas
 pnpm install                       # repo root, once
 pnpm test                          # core tests
 cd examples/ai-sdk && pnpm install --ignore-workspace && cd ../..
-npx vitest run --maxWorkers=1 examples/ai-sdk     # mock model, no API key needed
+npx vitest run --maxWorkers=1 --silent=false examples/ai-sdk   # mock model, no API key needed; prints the reports
 ```
 
 Every example also has a `real-model.test.ts`, which is skipped unless `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is set. See [docs/results](docs/results) for the exact commands behind the published numbers.
