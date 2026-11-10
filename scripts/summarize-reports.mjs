@@ -35,12 +35,15 @@ const flush = () => {
     a.pass++
     if (row.hollow) a.hollow++
   } else {
-    // New logs mark completion lines with "~ incomplete:"; old logs only have "- " lines,
-    // classified by whether the count went over (duplicate) or under (incomplete).
-    const marked = row.violations.some((v) => v.kind === 'completion')
-    const dup = safety.some((v) => (marked ? true : /found (\d+)/.test(v.text) && isOver(v.text)))
-    const inc = row.violations.some((v) => v.kind === 'completion') || (!marked && safety.some((v) => /found (\d+)/.test(v.text) && !isOver(v.text)))
-    if (dup) a.duplicate++ // any safety violation (in new logs) or an over-count (old logs)
+    // New-format logs (decided per FILE) mark completion lines with "~ incomplete:": every other
+    // "- " line is a safety violation. Old logs only have "- " lines, classified by over/under count.
+    // Harness or agent failures (baseline agent error, an invariant that threw) are never duplicates.
+    const realSafety = safety.filter((v) => !/^baseline agent error:/.test(v.text) && !/ threw: /.test(v.text))
+    const dup = newFormat ? realSafety.length > 0 : realSafety.some((v) => /found (\d+)/.test(v.text) && isOver(v.text))
+    const inc = newFormat
+      ? row.violations.some((v) => v.kind === 'completion')
+      : safety.some((v) => /found (\d+)/.test(v.text) && !isOver(v.text))
+    if (dup) a.duplicate++
     else if (inc) a.incomplete++
     else a.other++
   }
@@ -52,8 +55,11 @@ function isOver(v) {
   return m ? Number(m[2]) > Number(m[1]) : false
 }
 
+let newFormat = false
 for (const f of files) {
-  for (const line of readFileSync(f, 'utf8').split(/\r?\n/)) {
+  const text = readFileSync(f, 'utf8')
+  newFormat = /~ incomplete:|\[(INCOMPLETE|UNTESTED)\]/.test(text)
+  for (const line of text.split(/\r?\n/)) {
     const s = line.match(/^shakedown: (.+?)\s+(PASS|FAIL|SAFE)$/)
     if (s) {
       flush()

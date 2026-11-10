@@ -1,4 +1,5 @@
 import { markDeduped } from '../context.js'
+import { hasOwn, setOwn } from '../util.js'
 import type { Violation } from '../runner.js'
 
 /**
@@ -32,7 +33,7 @@ export class FakeMailer {
   send(m: { to: string; subject: string; body: string; ref?: string }, o: { idempotencyKey?: string } = {}): { id: string } {
     const payload = JSON.stringify([m.to, m.subject, m.body])
     if (o.idempotencyKey) {
-      const hit = this.keys[o.idempotencyKey]
+      const hit = hasOwn(this.keys, o.idempotencyKey) ? this.keys[o.idempotencyKey] : undefined
       if (hit) {
         // Like real email APIs (e.g. Resend), a key reused with a different payload is rejected.
         if (hit.payload !== payload) {
@@ -44,7 +45,7 @@ export class FakeMailer {
     }
     const email: Email = { id: `msg_${++this.seq}`, to: m.to, subject: m.subject, body: m.body, ...(m.ref !== undefined ? { ref: m.ref } : {}) }
     this.sent.push(email)
-    if (o.idempotencyKey) this.keys[o.idempotencyKey] = { id: email.id, payload }
+    if (o.idempotencyKey) setOwn(this.keys, o.idempotencyKey, { id: email.id, payload })
     return { id: email.id }
   }
 

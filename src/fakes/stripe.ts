@@ -1,4 +1,5 @@
 import { markDeduped } from '../context.js'
+import { hasOwn, setOwn } from '../util.js'
 import type { Violation } from '../runner.js'
 
 /**
@@ -100,18 +101,21 @@ export class FakeStripe {
   }
 
   retrieveCharge(id: string): Charge {
-    const c = this.s.charges[id]
+    const c = hasOwn(this.s.charges, id) ? this.s.charges[id] : undefined
     if (!c) throw new StripeError('invalid_request_error', 'resource_missing', `No such charge: '${id}'`)
     return clone(c)
   }
 
   createRefund(p: CreateRefundParams, o: RequestOptions = {}): Refund {
     // Parameter validation happens before the idempotency layer, as in Stripe.
+    if (typeof p.charge !== 'string' || p.charge === '') {
+      throw new StripeError('invalid_request_error', 'parameter_missing', 'Missing required param: charge.')
+    }
     if (p.amount !== undefined && (!Number.isInteger(p.amount) || p.amount <= 0)) {
       throw new StripeError('invalid_request_error', 'parameter_invalid_integer', 'amount must be a positive integer')
     }
     return this.idempotent('POST /v1/refunds', o.idempotencyKey, p, () => {
-      const c = this.s.charges[p.charge]
+      const c = hasOwn(this.s.charges, p.charge) ? this.s.charges[p.charge] : undefined
       if (!c) throw new StripeError('invalid_request_error', 'resource_missing', `No such charge: '${p.charge}'`)
       const remaining = c.amount - c.amount_refunded
       if (remaining === 0) {
@@ -161,7 +165,7 @@ export class FakeStripe {
   private idempotent<T>(endpoint: string, key: string | undefined, params: unknown, fn: () => T): T {
     if (!key) return fn()
     const p = stableStringify(params)
-    const hit = this.s.idempotency[key]
+    const hit = hasOwn(this.s.idempotency, key) ? this.s.idempotency[key] : undefined
     if (hit) {
       if (hit.endpoint !== endpoint) {
         throw new StripeError(
@@ -184,11 +188,11 @@ export class FakeStripe {
     // Like real Stripe, the first result is stored whether it succeeded or failed.
     try {
       const response = fn()
-      this.s.idempotency[key] = { endpoint, params: p, response: clone(response) }
+      setOwn(this.s.idempotency, key, { endpoint, params: p, response: clone(response) })
       return response
     } catch (e) {
       if (e instanceof StripeError) {
-        this.s.idempotency[key] = { endpoint, params: p, response: null, error: { type: e.type, code: e.code, message: e.message } }
+        setOwn(this.s.idempotency, key, { endpoint, params: p, response: null, error: { type: e.type, code: e.code, message: e.message } })
       }
       throw e
     }

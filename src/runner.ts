@@ -1,4 +1,5 @@
-import { newRunContext, withPhase, type CallRecord, type RunContext } from './context.js'
+import { beginScenario, endScenario, newRunContext, withPhase, type CallRecord, type RunContext } from './context.js'
+import { safeString } from './util.js'
 import { TOOL_FAULT_KINDS, describeFault, isSimulatedCrash, validateFault, type FaultKind, type FaultSpec } from './faults.js'
 
 /**
@@ -87,6 +88,12 @@ export interface FaultResult<W = unknown> {
    */
   untested: boolean
   untestedReason?: string
+  /**
+   * The row passed, but the resumed/redelivered job never re-attempted the operation at risk
+   * (no write call, no guard): the pass comes from the resume path, not from idempotency.
+   * Still safe (nothing happened twice), but it proves nothing about the tools.
+   */
+  hollow: boolean
   /** Things worth knowing that do not change the verdict. */
   notes: string[]
   durationMs: number
@@ -107,9 +114,20 @@ export interface Report<W = unknown> {
   safe: boolean
   /** Report-level problems (nothing tested, invalid faults). */
   problems: string[]
+  /** Rows that passed without exercising the operation at risk (see FaultResult.hollow). */
+  hollowRows: number
 }
 
 export async function runScenario<W>(scenario: Scenario<W>): Promise<Report<W>> {
+  beginScenario()
+  try {
+    return await runScenarioInner(scenario)
+  } finally {
+    endScenario()
+  }
+}
+
+async function runScenarioInner<W>(scenario: Scenario<W>): Promise<Report<W>> {
   const problems: string[] = []
   const baseline = await runOnce(scenario, null)
   const results: Array<FaultResult<W>> = [baseline]
@@ -139,7 +157,7 @@ export async function runScenario<W>(scenario: Scenario<W>): Promise<Report<W>> 
   const clean = (r: FaultResult<W>) => r.violations.length === 0 && !r.untested
   const passed = problems.length === 0 && results.every((r) => triggeredOk(r) && clean(r) && r.incomplete.length === 0)
   const safe = problems.length === 0 && baseline.passed && results.every((r) => triggeredOk(r) && clean(r))
-  return { scenario: scenario.name, results, passed, safe, problems }
+  return { scenario: scenario.name, results, passed, safe, problems, hollowRows: results.filter((r) => r.hollow).length }
 }
 
 /** Every tool fault kind on every distinct write tool seen in the baseline run, plus one job redelivery. */
@@ -169,8 +187,9 @@ async function runOnce<W>(scenario: Scenario<W>, fault: FaultSpec | null): Promi
   })
 
   const redeliver = fault?.kind === 'job-redelivery'
-  if (redeliver) ctx.faultFired = true
-  if (ctx.crashed || redeliver) {
+  // A redelivery only tests something if the first delivery committed a write.
+  if (redeliver) ctx.faultFired = ctx.calls.some((c) => c.phase === 'run' && c.effect === 'write' && c.committed)
+  if (ctx.crashed || (redeliver && ctx.faultFired)) {
     // A new process picks the job up: in-process state is gone.
     for (const reset of ctx.volatile) reset()
     ctx.volatile.clear()
@@ -207,7 +226,7 @@ async function runOnce<W>(scenario: Scenario<W>, fault: FaultSpec | null): Promi
   }
 
   const faultNotTriggered = fault !== null && !ctx.faultFired
-  const resumed = ctx.crashed || redeliver
+  const resumed = ctx.crashed || (redeliver && ctx.faultFired)
   const resumeWrites = resumed ? ctx.calls.filter((c) => c.phase === 'resume' && c.effect === 'write' && !c.blocked).length : null
   // Did the resumed job actually exercise idempotency for the operation at risk?
   // A tool is exercised if the resume called it again or its own write-ahead guard fired.
@@ -231,7 +250,8 @@ async function runOnce<W>(scenario: Scenario<W>, fault: FaultSpec | null): Promi
       `the ${redeliver ? 'redelivered' : 'resumed'} job made no write calls; it passed because the write-ahead guard on ${atRisk.join(', ')} refused or reconciled the repeat`,
     )
   }
-  if (resumeWrites === 0 && !resumeExercised && violations.length === 0 && incomplete.length === 0 && !faultNotTriggered && !untested) {
+  const hollow = resumed && resumeWrites === 0 && !resumeExercised && violations.length === 0 && incomplete.length === 0 && !faultNotTriggered && !untested
+  if (hollow) {
     notes.push(
       `the ${redeliver ? 'redelivered' : 'resumed'} job made no write calls, so this pass comes from the resume path (it found the work done or refused to run), not from idempotent tools`,
     )
@@ -252,6 +272,7 @@ async function runOnce<W>(scenario: Scenario<W>, fault: FaultSpec | null): Promi
     resumeWrites,
     untested,
     ...(untestedReason ? { untestedReason } : {}),
+    hollow,
     notes,
     durationMs: Math.round(performance.now() - started),
     world,
@@ -259,7 +280,11 @@ async function runOnce<W>(scenario: Scenario<W>, fault: FaultSpec | null): Promi
 }
 
 function notTriggeredReason(ctx: RunContext, f: FaultSpec): string {
+  if (f.kind === 'job-redelivery') return 'the job made no committed write calls before the redelivery'
   const n = f.onCall ?? 1
+  if (ctx.faultRetarget) {
+    return `every targeted call${f.tool ? ` to ${f.tool}` : ''} failed with a real error before the fault could be injected`
+  }
   if (f.tool) {
     const calls = ctx.counters.get(f.tool) ?? 0
     return calls === 0 ? `${f.tool} was never called` : `${f.tool} was called ${calls} time(s), fewer than onCall=${n}`
@@ -268,5 +293,5 @@ function notTriggeredReason(ctx: RunContext, f: FaultSpec): string {
 }
 
 function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
+  return safeString(e)
 }

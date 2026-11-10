@@ -1,6 +1,6 @@
 {
   "name": "agent-shakedown",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Crash-test your AI agent's tool calls: stateful fake backends + fault injection + invariants that fail CI when an agent double-refunds, double-sends or deletes.",
   "keywords": [
     "ai",

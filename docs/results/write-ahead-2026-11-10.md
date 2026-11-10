@@ -23,10 +23,12 @@ A question from a reader of the launch post: *if you write a "pending" row befor
 **In code**
 
 ```ts
+interface EmailArgs { ticket: string; to: string; subject: string; body: string }
+
 const sendEmail = idempotent(
-  shake('send_email', (a) => mailer.send({ ...a, ref: currentIdempotencyKey() })),
+  shake('send_email', (a: EmailArgs) => mailer.send({ ...a, ref: currentIdempotencyKey() })),
   {
-    key: (a) => `refund-email:${a.ticket}`,   // the operation, never model-written text
+    key: (a: EmailArgs) => `refund-email:${a.ticket}`,   // the operation, never model-written text
     store: durableLedger,                     // must survive a crash
     onPending: ({ key }) => {                 // 'retry' | 'skip' | reconcile
       const sent = mailer.findByRef(key)[0]

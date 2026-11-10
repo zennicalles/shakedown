@@ -1,0 +1,10 @@
+{
+  "name": "shakedown-example-google-adk",
+  "private": true,
+  "type": "module",
+  "description": "Shakedown example: a Google ADK (TypeScript) refund agent crash-tested with fault injection",
+  "dependencies": {
+    "@google/adk": "^2.4.0",
+    "zod": "^4.6.7"
+  }
+}

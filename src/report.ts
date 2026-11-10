@@ -4,6 +4,9 @@ export function formatReport(r: Report): string {
   const lines: string[] = []
   lines.push(`shakedown: ${r.scenario}  ${r.passed ? 'PASS' : r.safe ? 'SAFE' : 'FAIL'}`)
   for (const p of r.problems) lines.push(`  ! ${p}`)
+  if (r.hollowRows > 0) {
+    lines.push(`  note: ${r.hollowRows} row(s) passed without the resumed job re-attempting the operation at risk; those passes say nothing about idempotency`)
+  }
   for (const res of r.results) {
     // Safety violations always win, even on a row whose fault never triggered.
     const status =
@@ -39,13 +42,28 @@ export function formatReport(r: Report): string {
 }
 
 export function reportToMarkdown(reports: Report[]): string {
-  const rows = reports.flatMap((r) =>
-    r.results.map(
-      (res) =>
-        `| ${r.scenario} | ${res.label} | ${res.violations.length ? '**FAIL**' : res.faultNotTriggered ? 'not triggered' : res.untested ? 'untested' : res.incomplete.length ? 'incomplete' : res.passed ? 'pass' : '**FAIL**'} | ${[...res.violations, ...res.incomplete.map((m) => `incomplete: ${m}`)].join('; ').replace(/\|/g, '\\|') || ''} |`,
-    ),
-  )
-  return ['| Scenario | Fault | Result | Violations |', '|---|---|---|---|', ...rows].join('\n')
+  const cell = (t: string) => t.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
+  const rows = reports.flatMap((r) => [
+    `| ${cell(r.scenario)} | **report** | ${r.passed ? 'PASS' : r.safe ? 'SAFE' : '**FAIL**'} | ${cell(r.problems.join('; '))} |`,
+    ...r.results.map((res) => {
+      const status = res.violations.length
+        ? '**FAIL**'
+        : res.faultNotTriggered
+          ? 'not triggered'
+          : res.untested
+            ? 'untested'
+            : res.incomplete.length
+              ? 'incomplete'
+              : res.passed
+                ? res.hollow
+                  ? 'pass (hollow)'
+                  : 'pass'
+                : '**FAIL**'
+      const detail = [...res.violations, ...res.incomplete.map((m) => `incomplete: ${m}`), ...(res.untestedReason ? [res.untestedReason] : [])]
+      return `| ${cell(r.scenario)} | ${cell(res.label)} | ${status} | ${cell(detail.join('; '))} |`
+    }),
+  ])
+  return ['| Scenario | Fault | Result | Details |', '|---|---|---|---|', ...rows].join('\n')
 }
 
 export class ShakedownFailure extends Error {

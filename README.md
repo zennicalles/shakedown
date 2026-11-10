@@ -112,10 +112,12 @@ You need **both** layers, and Shakedown's tests show why:
 Plain SMTP and many APIs have no idempotency key. Then record the intent **before** the call and decide what a retry does when it finds it:
 
 ```ts
+interface EmailArgs { ticket: string; to: string; subject: string; body: string }
+
 const sendEmail = idempotent(
-  shake('send_email', (a) => mailer.send({ ...a, ref: currentIdempotencyKey() })),
+  shake('send_email', (a: EmailArgs) => mailer.send({ ...a, ref: currentIdempotencyKey() })),
   {
-    key: (a) => `refund-email:${a.ticket}`,
+    key: (a: EmailArgs) => `refund-email:${a.ticket}`,
     store: durableLedger,                       // must survive a crash; implement claim() for concurrent workers
     onPending: ({ key }) => {                   // 'retry' | 'skip' | a reconcile function
       const sent = mailer.findByRef(key)[0]
@@ -141,7 +143,7 @@ More fakes (CRM, Postgres, Shopify, filesystem) are on the roadmap.
 
 ## Framework examples
 
-See [`examples/`](examples): Vercel AI SDK, OpenAI Agents SDK, LangGraph.js, Mastra and MCP, each using the framework's real agent loop with a scripted mock model, plus a real-model test that runs when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is set.
+See [`examples/`](examples): Vercel AI SDK, OpenAI Agents SDK, LangGraph.js, Mastra, MCP, Google ADK, Inngest AgentKit and VoltAgent, each using the framework's real agent loop with a scripted mock model, plus a real-model test that runs when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is set.
 
 ## Running the tests and examples
 
@@ -156,4 +158,4 @@ Every example also has a `real-model.test.ts`, which is skipped unless `ANTHROPI
 
 ## Status
 
-0.1.0: early, API may change. Issues and PRs welcome. MIT licensed.
+0.3.0: early, API may change. Issues and PRs welcome. MIT licensed.

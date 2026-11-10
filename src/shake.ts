@@ -1,4 +1,5 @@
-import { SHAKE_TOOL, currentStore, withCallSlot, type CallRecord, type CallSlot, type Effect, type RunContext } from './context.js'
+import { SHAKE_TOOL, currentStore, noteAttemptTool, withCallSlot, type CallRecord, type CallSlot, type Effect, type RunContext } from './context.js'
+import { safeClone, safeString } from './util.js'
 import { SimulatedCrash, SimulatedTimeoutError, SimulatedTransientError, type FaultSpec } from './faults.js'
 
 export interface ShakeOptions {
@@ -33,6 +34,7 @@ export function shake<A extends unknown[], R>(
 ): (...args: A) => Promise<R> {
   const effect: Effect = opts.effect ?? 'write'
   const wrapped = async (...args: A): Promise<R> => {
+    if (effect === 'write') noteAttemptTool(tool)
     const store = currentStore()
     if (!store) return await execute(...args)
     const run = store.ctx
@@ -51,6 +53,8 @@ export function shake<A extends unknown[], R>(
     run.counters.set(tool, callIndex)
     const writeIndex = effect === 'write' ? ++run.writeCount : 0
     const fault = matchFault(run, tool, effect, callIndex, writeIndex)
+    // Claim the fault synchronously so parallel calls in the same step can't all take it.
+    if (fault) run.faultClaimed = true
 
     /** Execute once, reporting whether the result was a replay rather than a new side effect. */
     const once = async (): Promise<{ out: R; deduped: boolean }> => {
@@ -81,6 +85,7 @@ export function shake<A extends unknown[], R>(
         return await once()
       } catch (e) {
         run.faultRetarget = true
+        run.faultClaimed = false
         return fail(e)
       }
     }
@@ -140,7 +145,7 @@ export function shake<A extends unknown[], R>(
 
 function matchFault(run: RunContext, tool: string, effect: Effect, callIndex: number, writeIndex: number): FaultSpec | null {
   const f = run.fault
-  if (!f || run.faultFired || f.kind === 'job-redelivery') return null
+  if (!f || run.faultFired || run.faultClaimed || f.kind === 'job-redelivery') return null
   const n = f.onCall ?? 1
   if (f.tool) {
     if (f.tool !== tool) return null
@@ -151,13 +156,5 @@ function matchFault(run: RunContext, tool: string, effect: Effect, callIndex: nu
 }
 
 function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
-}
-
-function safeClone(v: unknown): unknown {
-  try {
-    return structuredClone(v)
-  } catch {
-    return String(v)
-  }
+  return safeString(e)
 }

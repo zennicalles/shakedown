@@ -30,6 +30,8 @@ export interface RunContext {
   faultFired: boolean
   /** A real error stopped the targeted call before the fault could be injected; retarget the next matching call. */
   faultRetarget: boolean
+  /** Set synchronously when a call matches the fault, so parallel calls can't all take it. */
+  faultClaimed: boolean
   crashed: boolean
   calls: CallRecord[]
   counters: Map<string, number>
@@ -51,6 +53,7 @@ export function newRunContext(fault: FaultSpec | null): RunContext {
     fault,
     faultFired: false,
     faultRetarget: false,
+    faultClaimed: false,
     crashed: false,
     calls: [],
     counters: new Map(),
@@ -82,10 +85,19 @@ const als = new AsyncLocalStorage<Store>()
  */
 const live = new Set<Store>()
 
+/** Number of runScenario() calls in flight. The fallback is only safe when exactly one is. */
+let activeScenarios = 0
+export function beginScenario(): void {
+  activeScenarios++
+}
+export function endScenario(): void {
+  activeScenarios = Math.max(0, activeScenarios - 1)
+}
+
 export function currentStore(): Store | null {
   const s = als.getStore()
   if (s) return s
-  if (live.size === 1) return live.values().next().value ?? null
+  if (activeScenarios === 1 && live.size === 1) return live.values().next().value ?? null
   return null
 }
 
@@ -131,6 +143,22 @@ export function markDeduped(): void {
 export function markGuarded(tool: string | undefined): void {
   const s = alsStore()
   if (s && s.phase === 'resume' && tool) s.ctx.resumeGuardTools.add(tool)
+}
+
+/**
+ * Per-attempt slot: idempotent() opens one around its execute(), and every write tool
+ * shake()-d inside it is noted, so a guard can be attributed to the tool it protects even
+ * when adapters sit between idempotent() and shake().
+ */
+export interface AttemptSlot {
+  tools: Set<string>
+}
+const attemptAls = new AsyncLocalStorage<AttemptSlot>()
+export async function withAttemptSlot<T>(slot: AttemptSlot, fn: () => Promise<T>): Promise<T> {
+  return await attemptAls.run(slot, fn)
+}
+export function noteAttemptTool(tool: string): void {
+  attemptAls.getStore()?.tools.add(tool)
 }
 
 /** Tag shake() puts on the function it returns, so idempotent() knows which tool it protects. */
