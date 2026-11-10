@@ -16,28 +16,33 @@ const jsonAt = args.indexOf('--json')
 const jsonOut = jsonAt >= 0 ? args[jsonAt + 1] : null
 const files = args.filter((a, i) => jsonAt < 0 || (i !== jsonAt && i !== jsonAt + 1))
 
-const agg = new Map() // key scenario||fault -> {scenario, fault, runs, pass, duplicate, incomplete, other, miss, hollow}
+const agg = new Map() // key scenario||fault -> {scenario, fault, runs, pass, duplicate, incomplete, other, miss, untested, hollow}
 let scenario = null
 let row = null
 const bump = (k, f) => {
   const key = `${scenario}||${f}`
-  if (!agg.has(key)) agg.set(key, { scenario, fault: f, runs: 0, pass: 0, duplicate: 0, incomplete: 0, other: 0, miss: 0, hollow: 0 })
+  if (!agg.has(key)) agg.set(key, { scenario, fault: f, runs: 0, pass: 0, duplicate: 0, incomplete: 0, other: 0, miss: 0, untested: 0, hollow: 0 })
   return agg.get(key)
 }
 const flush = () => {
   if (!row) return
   const a = bump(row.status, row.fault)
   a.runs++
-  if (row.status === 'MISS') a.miss++
+  const safety = row.violations.filter((v) => v.kind === 'safety')
+  if (row.status === 'MISS' && safety.length === 0) a.miss++
+  else if (row.status === 'UNTESTED') a.untested++
   else if (row.status === 'pass') {
     a.pass++
     if (row.hollow) a.hollow++
   } else {
-    const dup = row.violations.some((v) => /found (\d+)/.test(v) && isOver(v))
-    const inc = row.violations.some((v) => /found (\d+)/.test(v) && !isOver(v))
-    if (dup) a.duplicate++
-    if (inc) a.incomplete++
-    if (!dup && !inc) a.other++
+    // New logs mark completion lines with "~ incomplete:"; old logs only have "- " lines,
+    // classified by whether the count went over (duplicate) or under (incomplete).
+    const marked = row.violations.some((v) => v.kind === 'completion')
+    const dup = safety.some((v) => (marked ? true : /found (\d+)/.test(v.text) && isOver(v.text)))
+    const inc = row.violations.some((v) => v.kind === 'completion') || (!marked && safety.some((v) => /found (\d+)/.test(v.text) && !isOver(v.text)))
+    if (dup) a.duplicate++ // any safety violation (in new logs) or an over-count (old logs)
+    else if (inc) a.incomplete++
+    else a.other++
   }
   row = null
 }
@@ -55,16 +60,16 @@ for (const f of files) {
       scenario = s[1]
       continue
     }
-    const r = line.match(/^\s+\[(pass|FAIL|MISS|INCOMPLETE)\] (.+?)\s+\(/)
+    const r = line.match(/^\s+\[(pass|FAIL|MISS|INCOMPLETE|UNTESTED)\] (.+?)  \(/)
     if (r && scenario) {
       flush()
       row = { status: r[1], fault: r[2], violations: [], hollow: false }
       continue
     }
     if (row) {
-      const v = line.match(/^\s+[-~] (?:incomplete: )?(.+)$/)
-      if (v) row.violations.push(v[1])
-      else if (/note: the (resumed|redelivered) job made no write calls/.test(line)) row.hollow = true
+      const v = line.match(/^\s+(-|~ incomplete:) (.+)$/)
+      if (v) row.violations.push({ kind: v[1] === '-' ? 'safety' : 'completion', text: v[2] })
+      else if (/note: the (resumed|redelivered) job made no write calls, so this pass comes from the resume path/.test(line)) row.hollow = true
       else if (!/^\s{9}/.test(line)) flush()
     }
   }
@@ -78,6 +83,7 @@ const cell = (a) => {
   if (a.duplicate) parts.push(`**${a.duplicate}/${a.runs} duplicate**`)
   if (a.incomplete) parts.push(`${a.incomplete}/${a.runs} incomplete`)
   if (a.other) parts.push(`${a.other}/${a.runs} other`)
+  if (a.untested) parts.push(`${a.untested}/${a.runs} untested`)
   if (a.miss) parts.push(`${a.miss}/${a.runs} not triggered`)
   if (a.pass) parts.push(`${a.pass}/${a.runs} ok${a.hollow ? ` (${a.hollow} hollow)` : ''}`)
   return parts.join(', ')

@@ -107,6 +107,31 @@ You need **both** layers, and Shakedown's tests show why:
 - Key on the **logical operation** (ticket id, order id), not on raw arguments. After an error, models often re-plan with slightly different arguments, and an argument hash misses the duplicate.
 - The default `MemoryLedger` is wiped by a simulated crash, as a real restart would wipe it. Use a durable store in production; `new MemoryLedger({ durable: true })` stands in for one in tests.
 
+### When the provider can't deduplicate: write-ahead intent
+
+Plain SMTP and many APIs have no idempotency key. Then record the intent **before** the call and decide what a retry does when it finds it:
+
+```ts
+const sendEmail = idempotent(
+  shake('send_email', (a) => mailer.send({ ...a, ref: currentIdempotencyKey() })),
+  {
+    key: (a) => `refund-email:${a.ticket}`,
+    store: durableLedger,                       // must survive a crash; implement claim() for concurrent workers
+    onPending: ({ key }) => {                   // 'retry' | 'skip' | a reconcile function
+      const sent = mailer.findByRef(key)[0]
+      return sent ? { found: true, result: { id: sent.id } } : { found: false }
+    },
+    notCommitted: (e) => isConnectionRefused(e), // optional: clear the pending record on errors that happened before sending
+  },
+)
+```
+
+- `retry`: send again. Only safe if the downstream deduplicates on the key.
+- `skip`: never repeat; throws `PossiblyCommittedError`. No duplicates, but an attempt that failed *before* sending is never retried unless `notCommitted` recognises the error.
+- reconcile: look the earlier attempt up in the system of record and only run it if it isn't there.
+
+Measured against every fault: [docs/results/write-ahead-2026-11-10.md](docs/results/write-ahead-2026-11-10.md). Short version: a pending row alone doesn't stop duplicates, reconcile is the best you can do without provider support, and nothing at the application level stops the same request being delivered twice to a provider that can't deduplicate.
+
 ## Fakes
 
 - `FakeStripe`: charges and refunds with Stripe's real rules: partial refunds accumulate, over-refunds are rejected, `Idempotency-Key` replays the first result (including execution errors), rejects reuse with different parameters or on a different endpoint, and does not store parameter-validation failures. Deterministic ids, `snapshot()`/`restore()`.

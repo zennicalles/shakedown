@@ -209,18 +209,34 @@ async function runOnce<W>(scenario: Scenario<W>, fault: FaultSpec | null): Promi
   const faultNotTriggered = fault !== null && !ctx.faultFired
   const resumed = ctx.crashed || redeliver
   const resumeWrites = resumed ? ctx.calls.filter((c) => c.phase === 'resume' && c.effect === 'write' && !c.blocked).length : null
+  // Did the resumed job actually exercise idempotency for the operation at risk?
+  // A tool is exercised if the resume called it again or its own write-ahead guard fired.
+  // For a tool fault that's the faulted tool; for a redelivery, every write tool the run committed.
+  const resumedWriteTools = new Set(ctx.calls.filter((c) => c.phase === 'resume' && c.effect === 'write' && !c.blocked).map((c) => c.tool))
+  const exercised = (tool: string) => resumedWriteTools.has(tool) || ctx.resumeGuardTools.has(tool)
+  const atRisk = redeliver
+    ? [...new Set(ctx.calls.filter((c) => c.phase === 'run' && c.effect === 'write' && c.committed).map((c) => c.tool))]
+    : [fault?.tool ?? ctx.calls.find((c) => c.fault)?.tool].filter((t): t is string => !!t)
+  const resumeExercised = atRisk.length > 0 && atRisk.every(exercised)
+  const guardedOnly = resumeWrites === 0 && resumeExercised
+  // Untested: the resume never exercised the operation at risk, and then errored or left the job incomplete.
   const untested =
-    resumed && resumeWrites === 0 && violations.length === 0 && !faultNotTriggered && (incomplete.length > 0 || resumeError !== undefined)
+    resumed && !resumeExercised && violations.length === 0 && !faultNotTriggered && (incomplete.length > 0 || resumeError !== undefined)
   const untestedReason = untested
     ? `the ${redeliver ? 'redelivered' : 'resumed'} job made no write calls and ${resumeError !== undefined ? `errored (${resumeError})` : 'left the job incomplete'}, so whether a retry would duplicate was never tested`
     : undefined
   const notes: string[] = []
-  if (resumeWrites === 0 && violations.length === 0 && incomplete.length === 0 && !faultNotTriggered && !untested) {
+  if (guardedOnly && violations.length === 0 && !faultNotTriggered) {
+    notes.push(
+      `the ${redeliver ? 'redelivered' : 'resumed'} job made no write calls; it passed because the write-ahead guard on ${atRisk.join(', ')} refused or reconciled the repeat`,
+    )
+  }
+  if (resumeWrites === 0 && !resumeExercised && violations.length === 0 && incomplete.length === 0 && !faultNotTriggered && !untested) {
     notes.push(
       `the ${redeliver ? 'redelivered' : 'resumed'} job made no write calls, so this pass comes from the resume path (it found the work done or refused to run), not from idempotent tools`,
     )
   }
-  if (agentError !== undefined && violations.length === 0 && incomplete.length === 0) notes.push(`agent error: ${agentError}`)
+  if (agentError !== undefined && violations.length === 0 && incomplete.length === 0 && !untested) notes.push(`agent error: ${agentError}`)
   return {
     fault,
     label: describeFault(fault),

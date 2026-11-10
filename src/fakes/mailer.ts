@@ -20,6 +20,8 @@ export interface Email {
   to: string
   subject: string
   body: string
+  /** Your own reference for the send (like Resend tags or SendGrid custom_args), for reconciling later. */
+  ref?: string
 }
 
 export class FakeMailer {
@@ -27,7 +29,7 @@ export class FakeMailer {
   private seq = 0
   private keys: Record<string, { id: string; payload: string }> = {}
 
-  send(m: { to: string; subject: string; body: string }, o: { idempotencyKey?: string } = {}): { id: string } {
+  send(m: { to: string; subject: string; body: string; ref?: string }, o: { idempotencyKey?: string } = {}): { id: string } {
     const payload = JSON.stringify([m.to, m.subject, m.body])
     if (o.idempotencyKey) {
       const hit = this.keys[o.idempotencyKey]
@@ -40,10 +42,15 @@ export class FakeMailer {
         return { id: hit.id }
       }
     }
-    const email: Email = { id: `msg_${++this.seq}`, to: m.to, subject: m.subject, body: m.body }
+    const email: Email = { id: `msg_${++this.seq}`, to: m.to, subject: m.subject, body: m.body, ...(m.ref !== undefined ? { ref: m.ref } : {}) }
     this.sent.push(email)
     if (o.idempotencyKey) this.keys[o.idempotencyKey] = { id: email.id, payload }
     return { id: email.id }
+  }
+
+  /** Look up sends by your own reference: the reconcile path for providers without idempotency keys. */
+  findByRef(ref: string): Email[] {
+    return structuredClone(this.sent.filter((e) => e.ref === ref))
   }
 
   outbox(to?: string): Email[] {

@@ -36,6 +36,12 @@ export interface RunContext {
   writeCount: number
   /** Number of replayed (deduplicated) results seen in this run. */
   dedupes: number
+  /**
+   * Write tools whose idempotency guard (a refused possibly-duplicate call, or a reconcile
+   * that found the earlier effect) fired in the resumed/redelivered job. Only guards that
+   * ran inside the run's own async context are counted.
+   */
+  resumeGuardTools: Set<string>
   /** Reset hooks for in-process state that a real crash or redelivery to a new worker would lose. */
   volatile: Set<() => void>
 }
@@ -50,6 +56,7 @@ export function newRunContext(fault: FaultSpec | null): RunContext {
     counters: new Map(),
     writeCount: 0,
     dedupes: 0,
+    resumeGuardTools: new Set(),
     volatile: new Set(),
   }
 }
@@ -82,6 +89,11 @@ export function currentStore(): Store | null {
   return null
 }
 
+/** The store only if it came from AsyncLocalStorage (never the single-live-run fallback). */
+function alsStore(): Store | null {
+  return als.getStore() ?? null
+}
+
 export function currentRun(): RunContext | null {
   return currentStore()?.ctx ?? null
 }
@@ -108,6 +120,27 @@ export function markDeduped(): void {
   if (!s) return
   s.ctx.dedupes++
   if (s.call) s.call.deduped = true
+}
+
+/**
+ * Called by idempotent() when its write-ahead guard handles an attempt that may already have
+ * happened (refused it, or reconciled it against the system of record). `tool` is the shake()
+ * tool it protects; guards without a known write tool, outside the resume phase, or reached
+ * through the context-loss fallback are not counted.
+ */
+export function markGuarded(tool: string | undefined): void {
+  const s = alsStore()
+  if (s && s.phase === 'resume' && tool) s.ctx.resumeGuardTools.add(tool)
+}
+
+/** Tag shake() puts on the function it returns, so idempotent() knows which tool it protects. */
+export const SHAKE_TOOL: unique symbol = Symbol.for('shakedown.tool')
+export interface ShakeToolTag {
+  tool: string
+  effect: Effect
+}
+export function shakeToolOf(fn: unknown): ShakeToolTag | undefined {
+  return typeof fn === 'function' ? (fn as unknown as Record<symbol, ShakeToolTag | undefined>)[SHAKE_TOOL] : undefined
 }
 
 /** True inside the crashed run phase: the "process" is dead and must not perform or persist anything. */

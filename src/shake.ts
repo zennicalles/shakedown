@@ -1,4 +1,4 @@
-import { currentStore, withCallSlot, type CallRecord, type CallSlot, type Effect, type RunContext } from './context.js'
+import { SHAKE_TOOL, currentStore, withCallSlot, type CallRecord, type CallSlot, type Effect, type RunContext } from './context.js'
 import { SimulatedCrash, SimulatedTimeoutError, SimulatedTransientError, type FaultSpec } from './faults.js'
 
 export interface ShakeOptions {
@@ -32,7 +32,7 @@ export function shake<A extends unknown[], R>(
   opts: ShakeOptions = {},
 ): (...args: A) => Promise<R> {
   const effect: Effect = opts.effect ?? 'write'
-  return async (...args: A): Promise<R> => {
+  const wrapped = async (...args: A): Promise<R> => {
     const store = currentStore()
     if (!store) return await execute(...args)
     const run = store.ctx
@@ -134,6 +134,8 @@ export function shake<A extends unknown[], R>(
         throw new Error(`[shakedown] unknown fault kind: ${String((fault as { kind: unknown }).kind)}`)
     }
   }
+  Object.defineProperty(wrapped, SHAKE_TOOL, { value: { tool, effect } })
+  return wrapped
 }
 
 function matchFault(run: RunContext, tool: string, effect: Effect, callIndex: number, writeIndex: number): FaultSpec | null {
