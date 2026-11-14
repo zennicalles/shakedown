@@ -18,7 +18,7 @@ npx agent-shakedown demo
 npx agent-shakedown scan -- <the command that starts your MCP server>
 ```
 
-We read the official payment agent servers: PayPal, Adyen and Coinbase AgentKit send no idempotency key on refunds or transfers, and Square never tells the model to reuse its key on retry; Razorpay and Resend get it right. [The audit, with source links](docs/audits/2026-11-14-payment-agent-servers.md).
+On the official payment agent servers it finds real gaps: PayPal, Adyen and Coinbase AgentKit send no idempotency key on refunds or transfers, and Square never tells the model to reuse its key on retry (all reported upstream, fixes not yet merged); Razorpay and Resend get it right. [Side-by-side, with source links and credits](docs/audits/2026-11-14-payment-agent-servers.md).
 
 **Use it** on your own agent:
 
@@ -174,4 +174,4 @@ Every example also has a `real-model.test.ts`, which is skipped unless `ANTHROPI
 
 ## Status
 
-0.4.0: early, API may change. Issues and PRs welcome. MIT licensed.
+0.4.1: early, API may change. Issues and PRs welcome. MIT licensed.

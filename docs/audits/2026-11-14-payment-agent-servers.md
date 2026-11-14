@@ -4,6 +4,17 @@ Agents call these servers' tools to refund, charge, transfer and email. When the
 
 Every provider below supports such a key in its API. The question is whether the official agent server lets the key reach the provider, and whether it tells the model to reuse the key when retrying. I read each server's source at the commit linked.
 
+**These gaps are already reported, and fixes are waiting on the vendors.** Credit to the people who got there first:
+
+| Server | Report | Fix waiting for review |
+|---|---|---|
+| PayPal | [paypal/agent-toolkit#98](https://github.com/paypal/agent-toolkit/issues/98) (aurumflux20, 4 Sep) | [#108](https://github.com/paypal/agent-toolkit/pull/108) (TypeScript), [#124](https://github.com/paypal/agent-toolkit/pull/124) (Python) |
+| Adyen | [Adyen/adyen-mcp#149](https://github.com/Adyen/adyen-mcp/issues/149) (terminalstate, 7 Oct) | [#150](https://github.com/Adyen/adyen-mcp/pull/150) |
+| Square | [square/square-mcp-server#31](https://github.com/square/square-mcp-server/issues/31) (aurumflux20, 4 Sep) | none yet |
+| Coinbase AgentKit | [coinbase/agentkit#1483](https://github.com/coinbase/agentkit/issues/1483) (aurumflux20, 4 Sep) | [#1530](https://github.com/coinbase/agentkit/pull/1530) |
+
+As of 14 Nov none is merged, so the servers people install today still have the gap. What this page adds is the side-by-side view and a way to check your own server (below).
+
 | Server | Money / message tools | Key reaches the provider? | Model told to reuse it on retry? |
 |---|---|---|---|
 | [Razorpay MCP](https://github.com/razorpay/razorpay-mcp-server/blob/7cbda461e670d7d2466b4ddd7156153f9ee6e233/pkg/razorpay/refunds.go#L48-L54) | `create_refund` | yes, `idempotency_key` → `X-Refund-Idempotency` | **yes** |
