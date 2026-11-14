@@ -2,9 +2,17 @@
 
 **Crash-test your AI agent's tool calls before they touch real money.**
 
-Agents now refund customers, send emails and edit records. When a network call times out *after* the side effect has happened, the agent (or the framework, or the HTTP client) retries, and the customer gets refunded twice. Shakedown finds these bugs in CI.
+When a tool call times out *after* the refund went through, the agent retries and the customer is refunded twice. Shakedown runs your real agent against **stateful fake backends** (Stripe, email, ...), **injects the failures that cause duplicates** (lost responses, double delivery, crash-and-resume) and fails CI when an **invariant** like "exactly one £50 refund" breaks.
 
-It runs your real agent against **stateful fake backends** (Stripe, email, ...), **injects the failures that cause duplicates** (lost responses, double delivery, crash-and-resume), and **checks invariants on the resulting state**: "exactly one £50 refund", "at most one email to the customer".
+![npx agent-shakedown demo: a refund agent with naive tools refunds £50 twice after a timeout, a duplicate delivery, a crash and a redelivery; with idempotent tools every fault passes](docs/demo.svg)
+
+**Try it** (no API key, no setup):
+
+```sh
+npx agent-shakedown demo
+```
+
+**Use it** on your own agent:
 
 ```sh
 npm install -D agent-shakedown
@@ -158,4 +166,4 @@ Every example also has a `real-model.test.ts`, which is skipped unless `ANTHROPI
 
 ## Status
 
-0.3.0: early, API may change. Issues and PRs welcome. MIT licensed.
+0.4.0: early, API may change. Issues and PRs welcome. MIT licensed.

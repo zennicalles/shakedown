@@ -1,6 +1,6 @@
 {
   "name": "agent-shakedown",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Crash-test your AI agent's tool calls: stateful fake backends + fault injection + invariants that fail CI when an agent double-refunds, double-sends or deletes.",
   "keywords": [
     "ai",
@@ -23,6 +23,9 @@
     "url": "https://github.com/zennicalles/shakedown/issues"
   },
   "type": "module",
+  "bin": {
+    "agent-shakedown": "dist/cli.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -41,8 +44,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --maxWorkers=1 test/core.test.ts",
-    "prepublishOnly": "npm run build && npm test"
+    "test": "vitest run --maxWorkers=1 test/core.test.ts test/cli.test.ts",
+    "prepublishOnly": "npm run build && npm test",
+    "demo:svg": "tsc -p tsconfig.build.json && node scripts/make-demo-cast.mjs && npx -y svg-term-cli@2.1.1 --in docs/demo.cast --out docs/demo.svg --window --padding 18"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

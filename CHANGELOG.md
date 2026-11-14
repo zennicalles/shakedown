@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (2026-11-14)
+
+- **`npx agent-shakedown demo`**: see it work with no API key and no setup. A built-in scripted refund agent (it retries a failed call up to 3 times, as models do) runs under every fault twice: with naive tools, printing the real `formatReport` output (`expected exactly 5000 refunded on ch_1, found 10000`), then with the fix (`idempotent()` + the key sent downstream via `currentIdempotencyKey()`), printing PASS.
+- New `agent-shakedown` bin (`dist/cli.js`): `demo`, `--help`, `--version`; unknown commands exit 1. Colour only on a TTY (`NO_COLOR` and `FORCE_COLOR` respected).
+- README opens with an animated terminal demo, `docs/demo.svg`, rendered from the real demo output: `scripts/make-demo-cast.mjs` writes `docs/demo.cast` and svg-term-cli renders it (`npm run demo:svg`).
+
 ## 0.3.0 (2026-11-10)
 
 Fixes from a bug hunt (three independent finders, every finding reproduced first, each with a regression test in test/hunt-regressions.test.ts):
