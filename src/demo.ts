@@ -6,6 +6,7 @@ import { currentIdempotencyKey, idempotent } from './fix/idempotent.js'
 import { formatReport } from './report.js'
 import { runScenario, type Report } from './runner.js'
 import { shake } from './shake.js'
+import { SCAN_USAGE, analyzeTools, formatScan, listToolsHttp, listToolsStdio, type McpTool } from './scan.js'
 
 /** The built-in demo behind `npx agent-shakedown demo`: no API key, no network. */
 export const README_URL = 'https://github.com/zennicalles/shakedown#readme'
@@ -108,6 +109,7 @@ const USAGE = `agent-shakedown: crash-test your AI agent's tool calls
 
 Usage:
   npx agent-shakedown demo        run a built-in refund agent under every fault (no API key, no network)
+  npx agent-shakedown scan -- <mcp server command>   flag MCP tools that can repeat a side effect on retry
   npx agent-shakedown --help      show this help
   npx agent-shakedown --version   print the version
 
@@ -126,6 +128,63 @@ export async function cli(argv: string[], io: CliIO): Promise<number> {
     return (io.out(`${pkg.version}\n`), 0)
   }
   if (cmd === 'demo') return (io.out(await demoText(io.color)), 0)
+  if (cmd === 'scan') return scanCommand(argv.slice(1), io)
   io.err(`agent-shakedown: unknown command '${cmd}'\n\n${USAGE}`)
   return 1
+}
+
+/** `agent-shakedown scan`. Exit 0: nothing high-risk; 1: a money/message tool can repeat on retry; 2: usage or connection error. */
+export async function scanCommand(argv: string[], io: CliIO): Promise<number> {
+  const dash = argv.indexOf('--')
+  const flags = dash >= 0 ? argv.slice(0, dash) : argv
+  const command = dash >= 0 ? argv.slice(dash + 1) : []
+  let json = false
+  let url: string | undefined
+  let file: string | undefined
+  let timeoutMs = 30_000
+  const headers: Record<string, string> = {}
+  for (let i = 0; i < flags.length; i++) {
+    const f = flags[i]!
+    const value = () => {
+      const v = flags[++i]
+      if (v === undefined) throw new Error(`${f} needs a value`)
+      return v
+    }
+    try {
+      if (f === '--json') json = true
+      else if (f === '--url') url = value()
+      else if (f === '--file') file = value()
+      else if (f === '--timeout') timeoutMs = Number(value()) * 1000
+      else if (f === '--header') {
+        const h = value()
+        const colon = h.indexOf(':')
+        if (colon <= 0) throw new Error(`--header expects "Name: value", got '${h}'`)
+        headers[h.slice(0, colon).trim()] = h.slice(colon + 1).trim()
+      } else if (f === '--help' || f === '-h') return (io.out(SCAN_USAGE), 0)
+      else throw new Error(`unknown option '${f}'`)
+    } catch (e) {
+      io.err(`agent-shakedown scan: ${(e as Error).message}\n\n${SCAN_USAGE}`)
+      return 2
+    }
+  }
+  if ([url, file, command.length ? 'cmd' : undefined].filter(Boolean).length !== 1 || !(timeoutMs > 0)) {
+    io.err(`agent-shakedown scan: give exactly one of --url, --file or -- <command>\n\n${SCAN_USAGE}`)
+    return 2
+  }
+  let listed: { serverName: string; tools: McpTool[] }
+  try {
+    if (file) {
+      const data = JSON.parse(readFileSync(file, 'utf8')) as { tools?: McpTool[]; result?: { tools?: McpTool[] } } | McpTool[]
+      const tools = Array.isArray(data) ? data : (data.tools ?? data.result?.tools)
+      if (!Array.isArray(tools)) throw new Error(`${file}: expected a tools/list result ({"tools": [...]}) or an array of tools`)
+      listed = { serverName: file, tools }
+    } else if (url) listed = await listToolsHttp(url, headers, timeoutMs)
+    else listed = await listToolsStdio(command[0]!, command.slice(1), { timeoutMs })
+  } catch (e) {
+    io.err(`agent-shakedown scan: could not list the server's tools: ${(e as Error).message}\n`)
+    return 2
+  }
+  const result = analyzeTools(listed.serverName, listed.tools)
+  io.out(json ? `${JSON.stringify(result, null, 2)}\n` : formatScan(result, io.color))
+  return result.high > 0 ? 1 : 0
 }

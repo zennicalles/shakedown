@@ -5,6 +5,8 @@
 - **`npx agent-shakedown demo`**: see it work with no API key and no setup. A built-in scripted refund agent (it retries a failed call up to 3 times, as models do) runs under every fault twice: with naive tools, printing the real `formatReport` output (`expected exactly 5000 refunded on ch_1, found 10000`), then with the fix (`idempotent()` + the key sent downstream via `currentIdempotencyKey()`), printing PASS.
 - New `agent-shakedown` bin (`dist/cli.js`): `demo`, `--help`, `--version`; unknown commands exit 1. Colour only on a TTY (`NO_COLOR` and `FORCE_COLOR` respected).
 - README opens with an animated terminal demo, `docs/demo.svg`, rendered from the real demo output: `scripts/make-demo-cast.mjs` writes `docs/demo.cast` and svg-term-cli renders it (`npm run demo:svg`).
+- **`npx agent-shakedown scan`**: point it at any MCP server (`-- <command>` for stdio, `--url` for streamable HTTP, `--file` for a saved `tools/list`) and it flags tools that can repeat a side effect on retry: writes with no idempotency key, keys the model is never told to reuse, and pass-through API tools. Static (names, schemas, annotations); never calls a tool. `--json`; exit 1 when a money or messaging tool is at risk, so it can gate CI. No new dependencies.
+- `docs/audits/2026-11-14-payment-agent-servers.md`: the official PayPal, Adyen, Square, Coinbase AgentKit, Razorpay and Resend agent servers, read for idempotency-key handling, with source links.
 
 ## 0.3.0 (2026-11-10)
 

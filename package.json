@@ -44,7 +44,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --maxWorkers=1 test/core.test.ts test/cli.test.ts",
+    "test": "vitest run --maxWorkers=1 test/core.test.ts test/cli.test.ts test/scan.test.ts",
     "prepublishOnly": "npm run build && npm test",
     "demo:svg": "tsc -p tsconfig.build.json && node scripts/make-demo-cast.mjs && npx -y svg-term-cli@2.1.1 --in docs/demo.cast --out docs/demo.svg --window --padding 18"
   },

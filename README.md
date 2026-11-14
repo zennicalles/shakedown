@@ -12,6 +12,14 @@ When a tool call times out *after* the refund went through, the agent retries an
 npx agent-shakedown demo
 ```
 
+**Check an MCP server** in one command. It lists the tools and flags the ones that can refund, charge or send twice when an agent retries, because they take no idempotency key:
+
+```sh
+npx agent-shakedown scan -- <the command that starts your MCP server>
+```
+
+We read the official payment agent servers: PayPal, Adyen and Coinbase AgentKit send no idempotency key on refunds or transfers, and Square never tells the model to reuse its key on retry; Razorpay and Resend get it right. [The audit, with source links](docs/audits/2026-11-14-payment-agent-servers.md).
+
 **Use it** on your own agent:
 
 ```sh
