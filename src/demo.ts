@@ -6,7 +6,7 @@ import { currentIdempotencyKey, idempotent } from './fix/idempotent.js'
 import { formatReport } from './report.js'
 import { runScenario, type Report } from './runner.js'
 import { shake } from './shake.js'
-import { SCAN_USAGE, analyzeTools, formatScan, listToolsHttp, listToolsStdio, type McpTool } from './scan.js'
+import { SCAN_USAGE, analyzeTools, formatScan, listToolsHttp, listToolsStdio } from './scan.js'
 
 /** The built-in demo behind `npx agent-shakedown demo`: no API key, no network. */
 export const README_URL = 'https://github.com/zennicalles/shakedown#readme'
@@ -133,7 +133,7 @@ export async function cli(argv: string[], io: CliIO): Promise<number> {
   return 1
 }
 
-/** `agent-shakedown scan`. Exit 0: nothing high-risk; 1: a money/message tool can repeat on retry; 2: usage or connection error. */
+/** `agent-shakedown scan`. Exit 0: nothing high-risk; 1: a money/message tool can repeat on retry; 2: usage error, the server couldn't be read, or it listed no tools. */
 export async function scanCommand(argv: string[], io: CliIO): Promise<number> {
   const dash = argv.indexOf('--')
   const flags = dash >= 0 ? argv.slice(0, dash) : argv
@@ -143,10 +143,15 @@ export async function scanCommand(argv: string[], io: CliIO): Promise<number> {
   let file: string | undefined
   let timeoutMs = 30_000
   const headers: Record<string, string> = {}
+  const usage = (msg: string) => (io.err(`agent-shakedown scan: ${msg}\n\n${SCAN_USAGE}`), 2)
   for (let i = 0; i < flags.length; i++) {
-    const f = flags[i]!
+    // Both "--timeout 10" and "--timeout=10".
+    const raw = flags[i]!
+    const eq = raw.startsWith('--') ? raw.indexOf('=') : -1
+    const f = eq > 0 ? raw.slice(0, eq) : raw
+    const inline = eq > 0 ? raw.slice(eq + 1) : undefined
     const value = () => {
-      const v = flags[++i]
+      const v = inline ?? flags[++i]
       if (v === undefined) throw new Error(`${f} needs a value`)
       return v
     }
@@ -154,37 +159,44 @@ export async function scanCommand(argv: string[], io: CliIO): Promise<number> {
       if (f === '--json') json = true
       else if (f === '--url') url = value()
       else if (f === '--file') file = value()
-      else if (f === '--timeout') timeoutMs = Number(value()) * 1000
-      else if (f === '--header') {
+      else if (f === '--timeout') {
+        const v = value()
+        const s = Number(v)
+        if (!Number.isFinite(s) || s <= 0 || s > 3600) throw new Error(`--timeout expects seconds between 0 and 3600, got '${v}'`)
+        timeoutMs = s * 1000
+      } else if (f === '--header') {
         const h = value()
         const colon = h.indexOf(':')
         if (colon <= 0) throw new Error(`--header expects "Name: value", got '${h}'`)
         headers[h.slice(0, colon).trim()] = h.slice(colon + 1).trim()
       } else if (f === '--help' || f === '-h') return (io.out(SCAN_USAGE), 0)
-      else throw new Error(`unknown option '${f}'`)
+      else throw new Error(`unknown option '${raw}'`)
     } catch (e) {
-      io.err(`agent-shakedown scan: ${(e as Error).message}\n\n${SCAN_USAGE}`)
-      return 2
+      return usage((e as Error).message)
     }
   }
-  if ([url, file, command.length ? 'cmd' : undefined].filter(Boolean).length !== 1 || !(timeoutMs > 0)) {
-    io.err(`agent-shakedown scan: give exactly one of --url, --file or -- <command>\n\n${SCAN_USAGE}`)
-    return 2
-  }
-  let listed: { serverName: string; tools: McpTool[] }
+  if ([url, file, command.length ? 'cmd' : undefined].filter(Boolean).length !== 1) return usage('give exactly one of --url, --file or -- <command>')
   try {
-    if (file) {
-      const data = JSON.parse(readFileSync(file, 'utf8')) as { tools?: McpTool[]; result?: { tools?: McpTool[] } } | McpTool[]
-      const tools = Array.isArray(data) ? data : (data.tools ?? data.result?.tools)
-      if (!Array.isArray(tools)) throw new Error(`${file}: expected a tools/list result ({"tools": [...]}) or an array of tools`)
-      listed = { serverName: file, tools }
-    } else if (url) listed = await listToolsHttp(url, headers, timeoutMs)
-    else listed = await listToolsStdio(command[0]!, command.slice(1), { timeoutMs })
+    let listed: { serverName: string; tools: unknown[] }
+    try {
+      if (file) {
+        const data = JSON.parse(readFileSync(file, 'utf8')) as { tools?: unknown; result?: { tools?: unknown } } | unknown[] | null
+        const tools = Array.isArray(data) ? data : (data?.tools ?? data?.result?.tools)
+        if (!Array.isArray(tools)) throw new Error(`${file}: expected a tools/list result ({"tools": [...]}) or an array of tools`)
+        listed = { serverName: file, tools }
+      } else if (url) listed = await listToolsHttp(url, headers, timeoutMs)
+      else listed = await listToolsStdio(command[0]!, command.slice(1), { timeoutMs })
+    } catch (e) {
+      io.err(`agent-shakedown scan: could not list the server's tools: ${(e as Error).message}\n`)
+      return 2
+    }
+    const result = analyzeTools(listed.serverName, listed.tools)
+    io.out(json ? `${JSON.stringify(result, null, 2)}\n` : formatScan(result, io.color))
+    // An empty list checked nothing, so it must not pass a CI gate.
+    if (result.tools.length === 0) return 2
+    return result.high > 0 ? 1 : 0
   } catch (e) {
-    io.err(`agent-shakedown scan: could not list the server's tools: ${(e as Error).message}\n`)
+    io.err(`agent-shakedown scan: ${(e as Error).stack ?? String(e)}\n`)
     return 2
   }
-  const result = analyzeTools(listed.serverName, listed.tools)
-  io.out(json ? `${JSON.stringify(result, null, 2)}\n` : formatScan(result, io.color))
-  return result.high > 0 ? 1 : 0
 }

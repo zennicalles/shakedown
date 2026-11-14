@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 (2026-11-14)
+
+`scan` fixes from an adversarial review, each with a regression test:
+- No false passes from wording: retry guidance must be an instruction about the key ("reuse the same key when retrying"), not any sentence containing "same" and "retr"; negated text ("never reuse a key") no longer counts.
+- No false passes from names: get_or_create_charge, verify_and_pay, check_out, preview_and_send_email, cancel_and_refund_order and similar are writes, whatever their first word. Vendor prefixes (acme_pay_order, slack_get_users) are skipped when finding the action. Fewer false alarms: charge_status, email_lookup and text_to_speech aren't high risk.
+- A server request or JSON log line that reuses the id being waited on no longer ends the scan with 0 tools; server pings are answered. A server that lists no tools exits 2 instead of passing; malformed tools are skipped and counted.
+- Streamable HTTP: SSE is read event by event and the scan stops at the reply, even if the server leaves the stream open.
+- Windows: commands resolve through PATH/PATHEXT; .cmd shims (npx) get arguments escaped for cmd.exe, so quotes, spaces, `%VAR%`, `&` and trailing backslashes arrive unchanged.
+- `--timeout` is validated; `--flag=value` works.
+
 ## 0.4.0 (2026-11-14)
 
 - **`npx agent-shakedown demo`**: see it work with no API key and no setup. A built-in scripted refund agent (it retries a failed call up to 3 times, as models do) runs under every fault twice: with naive tools, printing the real `formatReport` output (`expected exactly 5000 refunded on ch_1, found 10000`), then with the fix (`idempotent()` + the key sent downstream via `currentIdempotencyKey()`), printing PASS.
