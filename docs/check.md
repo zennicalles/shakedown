@@ -4,6 +4,8 @@
 
 Your agent refunds, charges, books or emails people. When one of those calls times out *after* it went through, the agent (or your framework, or your job queue) retries, and the customer is refunded twice or emailed twice. With deliberately naive tools on a real model, a crash and resume refunded twice in 22 of 28 runs, and a timed-out email was re-sent in 25 of 28 ([method and results](results/haiku-5-5-2026-11-05.md)).
 
+The same harness found bugs that OpenAI (Agents SDK 0.22.0) and Mastra (1.83.0) have since fixed, and three that Google reproduced in its TypeScript ADK. [The list](../README.md).
+
 ## What you get, within 48 hours
 
 1. **A crash test of your agent's real loop.** Your agent runs against fake backends that behave like Stripe and your email provider, while Shakedown injects the failures that cause duplicates: a timeout after the side effect, the same call delivered twice, a crash then resume, the whole job delivered again.

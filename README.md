@@ -6,6 +6,12 @@ When a tool call times out *after* the refund went through, the agent retries an
 
 ![npx agent-shakedown demo: a refund agent with naive tools refunds £50 twice after a timeout, a duplicate delivery, a crash and a redelivery; with idempotent tools every fault passes](docs/demo.svg)
 
+**Bugs it found, fixed upstream:**
+- **OpenAI Agents SDK**: the default tool error text told models to "try again" after a timed-out refund. Fixed in `@openai/agents` 0.22.0 ([#2184](https://github.com/openai/openai-agents-js/issues/2184)).
+- **Mastra**: `DurableAgent.recover()` after a crash failed with Anthropic models. Fixed in `@mastra/core` 1.83.0 ([#29582](https://github.com/mastra-ai/mastra/issues/29582)); the maintainers said the harness "made this easy to reproduce".
+- **Google ADK (TypeScript)**: three tool-error and abort bugs, reproduced by Google with fixes in review ([#1330](https://github.com/google/adk-js/issues/1330), [#1331](https://github.com/google/adk-js/issues/1331), [#1332](https://github.com/google/adk-js/issues/1332)).
+- **Vercel AI SDK** and **VoltAgent**: approved tool calls that run outside the abort signal or replay after a retry; fixes in review ([vercel/ai#24911](https://github.com/vercel/ai/pull/24911), [VoltAgent#1540](https://github.com/VoltAgent/voltagent/pull/1540), [#1541](https://github.com/VoltAgent/voltagent/pull/1541)).
+
 **Try it** (no API key, no setup):
 
 ```sh
